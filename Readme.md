@@ -22,3 +22,31 @@ To start working it is necessary to follow the following steps:
     git fetch
     git pull
     ```
+
+### Docker Instruction
+Docker OS: Ubuntu 20.04 \
+NVIDIA CUDA Version: 11.3 
+
+1. Please follow docker base installation:
+    ```
+    https://docs.docker.com/engine/install/
+    ```
+
+2. Install nvidia-docker2 for GPU support:
+    ```
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID) && curl -s -L https://nvidia.github.io/libnvidia-container/gpgkey | sudo apt-key add - && curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    sudo apt-get update
+    sudo apt-get install -y nvidia-docker2
+    sudo systemctl restart docker
+    ```
+
+3. Build docker image:
+    please note that here you are downloading ubuntu, cuda and pytorch, and it may take several minutes
+    ```
+    ./docker/build.sh
+    ```
+
+4. run docker image:
+    ```
+    ./docker/run.sh
+    ```
