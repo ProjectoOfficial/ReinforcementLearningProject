@@ -17,6 +17,7 @@ RUN rm -f /etc/apt/sources.list.d/*.list
 
 # install Ubuntu Software needed for the development (DEBIAN_FRONTEND="noninteractive" needed to avoid human interaction in the process)
 RUN apt-get update && DEBIAN_FRONTEND="noninteractive" && apt-get install -y -q\
+    sudo \
     bash-completion \
     build-essential \
     ffmpeg \
@@ -53,8 +54,8 @@ RUN usermod -a -G video $USER_NAME
 # set user working directory
 WORKDIR $USER_HOME
 
-# allow sudo access without password to user
-RUN echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-$USER_NAME
+# set sudo password
+RUN echo 'root:Docker!' | chpasswd
 
 # sets the user context within the Docker container.
 USER $USER_NAME
