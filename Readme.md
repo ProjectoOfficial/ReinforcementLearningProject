@@ -22,6 +22,10 @@ To start working it is necessary to follow the following steps:
     git fetch
     git pull
     ```
+4. when you will need to push you have to:
+    ```
+    git push --set-upstream origin devel
+    ```
 
 ### Docker Instruction
 Docker OS: Ubuntu 20.04 \
