@@ -9,8 +9,12 @@ ARG USER_HOME=/home/$USER_NAME
 # to be sure we set non interactive bash also here
 ENV DEBIAN_FRONTEND=noninteractive
 
+# configuration for x11 forwarding
+LABEL com.nvidia.volues.needed="nvidia-docker"
+ENV PATH /usr/local/nvidia/bin:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/nvidia/lib:/usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y -q \
-    x11-apps mesa-utils 
+    x11-apps mesa-utils && rm -rf /var/lib/apt/lists/*
 
 # remove all the packages within Debian base configuration (not wasting time installing things that will not be used)
 RUN rm -f /etc/apt/sources.list.d/*.list

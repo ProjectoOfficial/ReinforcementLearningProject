@@ -1,5 +1,13 @@
 gym==0.26.2
+mujoco==2.2.0
 numpy==1.25.1
 Pillow==10.0.0
 pygame==2.5.0
 opencv-contrib-python==4.8.0.74
+gym-super-mario-bros==7.4.0
+tensordict==0.1.2
+torchrl==0.1.1
+tqdm==4.65.0
+matplotlib==3.7.2
+tensordict==0.1.2
+imageio=2.31.1
