@@ -126,7 +126,7 @@ class ActorCritic(nn.Module):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6, c1=0.5, c2=0.01):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6, c1=0.5, c2=0.01, lam=0.95, mode='gae'):
 
         self.has_continuous_action_space = has_continuous_action_space
 
@@ -151,7 +151,8 @@ class PPO:
         self.MseLoss = nn.MSELoss()
         self.c1 = c1
         self.c2 = c2
-        self.lamb = 0.9
+        self.lam = lam 
+        self.mode = mode
 
     def set_action_std(self, new_action_std):
         if self.has_continuous_action_space:
@@ -232,22 +233,44 @@ class PPO:
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(self.buffer.state_values, dim=0)).detach().to(device)
-        # Monte Carlo estimate of returns
-        rewards = []
-        discounted_reward = 0
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
-            if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
+        if self.mode == "mc":
+            # Monte Carlo estimate of returns
+            rewards = []
+            discounted_reward = 0
+            for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
+                if is_terminal:
+                    discounted_reward = 0
+                discounted_reward = reward + (self.gamma * discounted_reward)
+                rewards.insert(0, discounted_reward)
 
-        # Normalizing the rewards
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+            # Normalizing the rewards
+            rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
 
-        # calculate advantages
-        advantages = rewards.detach() - old_state_values.detach()
+            # calculate advantages
+            advantages = rewards.detach() - old_state_values.detach()
+        elif self.mode == "gae":
+            advs = []
+            discounted_reward = 0
+            adv = 0
+            v_last = 0
+            activate = 0
+            for reward, is_terminal, v_old in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals), reversed(self.buffer.state_values)):
+                if is_terminal:
+                    discounted_reward = 0
+                    activate = 0
+                else:
+                    activate = 1
+                #discounted_reward = reward + (self.gamma * discounted_reward)
+                #delta = reward + self.gamma * discounted_reward - v_old
+                delta = reward + self.gamma * v_last * activate - v_old
+                adv = delta + self.gamma * self.lam * activate * adv 
+                v_last = v_old
+                advs.insert(0, adv)
+            advantages = torch.tensor(advs, dtype=torch.float32).to(device)
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-7)
+            rewards = advantages.detach() + old_state_values.detach()
 
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
