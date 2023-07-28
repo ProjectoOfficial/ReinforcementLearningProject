@@ -1,11 +1,11 @@
 {
     "env_name": "LunarLander-v2",
-    "has_continuous_action_space": true,
+    "has_continuous_action_space": false,
     "max_ep_len": 300,
     "max_training_timesteps": 1e6,
     "print_freq_multiplier" : 8,
     "log_freq_multiplier": 2,
-    "save_model_freq": 1e5,
+    "save_model_freq": 5e4,
     "action_std": null,
     "action_std_decay_rate": null,
     "min_action_std": null,
