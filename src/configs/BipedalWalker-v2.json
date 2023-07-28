@@ -1,5 +1,5 @@
 {
-    "env_name": "RoboschoolHopper-v1",
+    "env_name": "BipedalWalker-v2",
     "has_continuous_action_space": true,
     "max_ep_len": 1500,
     "max_training_timesteps": 3e6,

@@ -1,13 +1,15 @@
 import os
 from datetime import datetime
 import torch
-import numpy as np
 
+import cv2
 import gym
 import json
 import argparse
 
 from ppo import PPO
+from actors.actor import Actor
+from utils.utils import set_seed, print_hyperparameters
 
 
 def read_cfg(cfg_path):
@@ -18,14 +20,26 @@ def read_cfg(cfg_path):
     return cfg
 
 
-################################### Training ###################################
-def train(cfg: dict):
-    print("============================================================================================")
-    print("training environment name : " + cfg["env_name"])
+def get_device():
+    device = torch.device('cpu')
+    if(torch.cuda.is_available()): 
+        device = torch.device('cuda') 
+        torch.cuda.empty_cache()
+        print("Device set to : " + str(torch.cuda.get_device_name(device)))
+    else:
+        print("Device set to : cpu")
+    return device
 
-    env = gym.make(cfg["env_name"])
 
-    # state space dimension
+def create_path(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def train(cfg: dict, args):
+    device = get_device()
+    
+    env = gym.make(cfg["env_name"], render_mode="rgb_array")
     state_dim = env.observation_space.shape[0]
 
     # action space dimension
@@ -34,82 +48,29 @@ def train(cfg: dict):
     else:
         action_dim = env.action_space.n
 
-    ###################### logging ######################
-    #### log files for multiple runs are NOT overwritten
-    log_dir = "PPO_logs"
-    if not os.path.exists(log_dir):
-          os.makedirs(log_dir)
+    # log files for multiple runs are NOT overwritten
+    create_path(args.log_path)
+    create_path(os.path.join(args.log_path, cfg["env_name"]))
 
-    log_dir = os.path.join(log_dir, cfg["env_name"])
-    if not os.path.exists(log_dir):
-          os.makedirs(log_dir)
-
-    #### get number of log files in log directory
-    run_num = 0
-    current_num_files = next(os.walk(log_dir))[2]
+    # get number of log files in log directory
+    current_num_files = next(os.walk(args.log_path))[2]
     run_num = len(current_num_files)
+    log_f_name = os.path.join(args.log_path, 'PPO_' + cfg["env_name"] + "_log_" + str(run_num) + ".csv")
 
-    #### create new log file for each run
-    log_f_name = os.path.join(log_dir, 'PPO_' + cfg["env_name"] + "_log_" + str(run_num) + ".csv")
-
-    print("current logging run number for " + cfg["env_name"] + " : ", run_num)
-    print("logging at : " + log_f_name)
-
-    ################### checkpointing ###################
-    run_num_pretrained = 0      #### change this to prevent overwriting weights in same env_name folder
-
-    directory = "PPO_preTrained"
-    if not os.path.exists(directory):
-          os.makedirs(directory)
-
-    directory = os.path.join(directory, cfg["env_name"])
-    if not os.path.exists(directory):
-          os.makedirs(directory)
-
-    checkpoint_path = directory + "PPO_{}_{}_{}.pth".format(cfg["env_name"], cfg["ppo_random_seed"], run_num_pretrained)
+    create_path(args.ckpt_path)
+    create_path(os.path.join(args.ckpt_path, cfg["env_name"]))
+    
+    checkpoint_path = os.path.join(args.ckpt_path, cfg["env_name"], "PPO_{}_{}_{}.pth".format(cfg["env_name"], cfg["ppo_random_seed"], args.pretrained_run))
     print("save checkpoint path : " + checkpoint_path)
+    
+    set_seed(env, cfg, args.verbose)
+    print_hyperparameters(cfg, state_dim, action_dim, run_num, log_f_name, args.verbose)
+    ppo_cfg = [cfg["ppo_lr_actor"], cfg["ppo_lr_critic"], cfg["ppo_gamma"], cfg["ppo_K_epochs"], \
+            cfg["ppo_eps_clip"], cfg["has_continuous_action_space"], cfg["action_std"]]
 
-    ############# print all hyperparameters #############
-    print("--------------------------------------------------------------------------------------------")
-    print("max training timesteps : ", int(cfg["max_training_timesteps"]))
-    print("max timesteps per episode : ", int(cfg["max_ep_len"]))
-    print("model saving frequency : " + str(int(cfg["save_model_freq"])) + " timesteps")
-    print("log frequency : " + str(cfg["max_ep_len"] * cfg["log_freq_multiplier"]) + " timesteps")
-    print("printing average reward over episodes in last : " + str(cfg["max_ep_len"] * cfg["print_freq_multiplier"]) + " timesteps")
-    print("--------------------------------------------------------------------------------------------")
-    print("state space dimension : ", state_dim)
-    print("action space dimension : ", action_dim)
-    print("--------------------------------------------------------------------------------------------")
-    if cfg["has_continuous_action_space"]:
-        print("Initializing a continuous action space policy")
-        print("--------------------------------------------------------------------------------------------")
-        print("starting std of action distribution : ", cfg["action_std"])
-        print("decay rate of std of action distribution : ", cfg["action_std_decay_rate"])
-        print("minimum std of action distribution : ", cfg["min_action_std"])
-        print("decay frequency of std of action distribution : " + str(int(cfg["action_std_decay_freq"])) + " timesteps")
-    else:
-        print("Initializing a discrete action space policy")
-    print("--------------------------------------------------------------------------------------------")
-    print("PPO update frequency : " + str(cfg["max_ep_len"] * cfg["ppo_update_timestep_multiplier"]) + " timesteps")
-    print("PPO K epochs : ", cfg["ppo_K_epochs"])
-    print("PPO epsilon clip : ", cfg["ppo_eps_clip"])
-    print("discount factor (gamma) : ", cfg["ppo_gamma"])
-    print("--------------------------------------------------------------------------------------------")
-    print("optimizer learning rate actor : ", cfg["ppo_lr_actor"])
-    print("optimizer learning rate critic : ", cfg["ppo_lr_critic"])
-    if cfg["ppo_random_seed"]:
-        print("--------------------------------------------------------------------------------------------")
-        print("setting random seed to ", cfg["ppo_random_seed"])
-        torch.manual_seed(cfg["ppo_random_seed"])
-        env.seed(cfg["ppo_random_seed"])
-        np.random.seed(cfg["ppo_random_seed"])
-    print("============================================================================================")
-
-    ################# training procedure ################
     # initialize a PPO agent
-    ppo_agent = PPO(state_dim, action_dim, cfg["ppo_lr_actor"], cfg["ppo_lr_critic"], cfg["ppo_gamma"], cfg["ppo_K_epochs"], \
-        cfg["ppo_eps_clip"], cfg["has_continuous_action_space"], cfg["action_std"])
-
+    ppo_agent = PPO(Actor, state_dim, action_dim, *ppo_cfg, device=device, process_image=args.process_image)
+        
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
     print("Started training at (GMT) : ", start_time)
@@ -128,11 +89,14 @@ def train(cfg: dict):
 
     time_step = 0
     i_episode = 0
+    running_loss = 0
 
     # training loop
     while time_step <= int(cfg["max_training_timesteps"]):
-
-        state = env.reset()[0]
+        state = {
+            "env_state": env.reset()[0],
+            "env_image": env.render() if args.process_image else None
+        }
         current_ep_reward = 0
 
         #Training Loop for a single episode (or until we reach the max number ot iterations for a single episode)
@@ -140,7 +104,10 @@ def train(cfg: dict):
 
             # select action with policy and perform the selected action on the environment
             action = ppo_agent.select_action(state)
-            state, reward, done, _, _ = env.step(action)
+            new_state, reward, done, _, _ = env.step(action)
+            
+            state["env_state"] = new_state
+            state["env_image"] = env.render() if args.process_image else None
 
             # saving reward and is_terminals
             ppo_agent.buffer.rewards.append(reward)
@@ -153,7 +120,7 @@ def train(cfg: dict):
             # since we use Monte Carlo for the updates, we wait until we have sampled N rewards and then we train
             # actor's and critic's neural networks
             if time_step % (cfg["max_ep_len"] * cfg["ppo_update_timestep_multiplier"]) == 0:
-                ppo_agent.update()
+                running_loss = ppo_agent.update()
 
             # if continuous action space; then decay action std of ouput action distribution
             if cfg["has_continuous_action_space"] and time_step % int(cfg["action_std_decay_freq"]) == 0:
@@ -161,8 +128,6 @@ def train(cfg: dict):
 
             # log in logging file
             if time_step % (cfg["max_ep_len"] * cfg["log_freq_multiplier"]) == 0:
-
-                # log average reward till last episode
                 log_avg_reward = log_running_reward / log_running_episodes
                 log_avg_reward = round(log_avg_reward, 4)
 
@@ -174,12 +139,10 @@ def train(cfg: dict):
 
             # printing average reward
             if time_step % (cfg["max_ep_len"] * cfg["print_freq_multiplier"]) == 0:
-
-                # print average reward till last episode
                 print_avg_reward = print_running_reward / print_running_episodes
                 print_avg_reward = round(print_avg_reward, 2)
 
-                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(i_episode, time_step, print_avg_reward))
+                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {} \t\t Loss : {:.5f}".format(i_episode, time_step, print_avg_reward, running_loss))
 
                 print_running_reward = 0
                 print_running_episodes = 0
@@ -192,6 +155,11 @@ def train(cfg: dict):
                 print("model saved")
                 print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)
                 print("--------------------------------------------------------------------------------------------")
+
+            if args.render:
+                frame = env.render()
+                cv2.imshow('frame', frame)
+                cv2.waitKey(1000//30) # 30fps
 
             # break; if the episode is over
             if done:
@@ -220,9 +188,15 @@ def train(cfg: dict):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("cfg_path", type=str, help="json configuration file path containing environment and ppo config")
+    parser.add_argument("--process-image", action="store_true", help="use also game image as state observation")
+    parser.add_argument("--verbose", action="store_true", help="verbosity")
+    parser.add_argument("--render", action="store_true", help="show environment progress")
+    parser.add_argument("--log-path", type=str, help="absolute path where to store logs")
+    parser.add_argument("--ckpt-path", type=str, help="absolute path where to store checkpoints")    
+    parser.add_argument("--pretrained-run", type=int, default=0, help="set this to load a particular checkpoint num")
     args = parser.parse_args()
     
     assert args.cfg_path is not None and os.path.isfile(args.cfg_path), "cfg_path is not specified or is not a json file absolute path"
     
     cfg = read_cfg(args.cfg_path)
-    train(cfg)
+    train(cfg, args)
