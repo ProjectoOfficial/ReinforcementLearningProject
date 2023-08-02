@@ -159,7 +159,10 @@ class PPO:
             # 3) S[pi_theta], entropy term introduced to ensure exploration
             # all signs are reversed because we use the optimizer to perform gradient descent
             # instead of using directly gradient ascent
-            loss = -torch.min(surr1, surr2) + self.c1 * self.criterion(state_values, rewards) - self.c2 * dist_entropy    
+            l_clip = -torch.min(surr1, surr2)
+            l_value_function = self.c1 * self.criterion(state_values, rewards)
+            l_entropy = - self.c2 * dist_entropy   
+            loss =  l_clip +  l_value_function  + l_entropy
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -172,7 +175,8 @@ class PPO:
         # clear buffer
         self.buffer.clear()
         
-        return loss.mean().detach()
+        clamped = ((ratios * advantages) == surr2).all().to(torch.int8)
+        return loss.mean().detach(), l_clip.mean().detach(), l_value_function.detach(), l_entropy.mean().detach(), state_values.mean().detach(), clamped.detach()
     
     
     def save(self, checkpoint_path):

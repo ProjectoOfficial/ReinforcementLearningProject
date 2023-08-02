@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import random
+import os
+import subprocess
 
 def set_seed(env, cfg, verbose):
     if cfg["ppo_random_seed"]:
@@ -15,20 +17,49 @@ def set_seed(env, cfg, verbose):
         np.random.seed(manual_seed)
 
 
-def print_hyperparameters(cfg, state_dim, action_dim, run_num, log_f_name, verbose):
+def create_path(path):
+    assert path is not None and path != "", "Ensure that the path you want to use is specified as parameter"
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def build_project(output_dir, project_name):
+    create_path(output_dir)
+    create_path(os.path.join(output_dir, project_name))
+    create_path(os.path.join(output_dir, project_name, "logs"))
+    create_path(os.path.join(output_dir, project_name, "ckpts"))
+    create_path(os.path.join(output_dir, project_name, "imgs"))
+    return os.path.join(output_dir, project_name)
+
+
+def create_videos_from_imgs(root_path, fps=30):
+    for subfolder in os.listdir(root_path):
+        path = os.path.join(root_path, subfolder)
+        for dirpath, _, filenames in os.walk(path):
+            video_name = os.path.basename(dirpath) + '.mp4'
+            video_path = os.path.join(path, video_name)
+
+            img_files = [os.path.join(dirpath, f) for f in filenames if f.lower().endswith('.jpg')]
+
+            img_files.sort()
+
+            if img_files:
+                ffmpeg_cmd = f"ffmpeg -framerate {fps} -i %d.jpg -c:v libx264 -r {fps} {video_path}"
+                subprocess.run(ffmpeg_cmd, shell=True, cwd=dirpath)
+
+
+def print_hyperparameters(cfg, state_dim, action_dim, log_f_name, verbose):
     if verbose:
         print("============================================================================================")
         print("training environment name : " + cfg["env_name"])
-        
-        print("current logging run number for " + cfg["env_name"] + " : ", run_num)
         print("logging at : " + log_f_name)
         
         print("--------------------------------------------------------------------------------------------")
-        print("max training timesteps : ", int(cfg["max_training_timesteps"]))
-        print("max timesteps per episode : ", int(cfg["max_ep_len"]))
+        print("episodes : ", int(cfg["episodes"]))
+        print("max timesteps per episode : ", int(cfg["episode_length"]))
         print("model saving frequency : " + str(int(cfg["save_model_freq"])) + " timesteps")
-        print("log frequency : " + str(cfg["max_ep_len"] * cfg["log_freq_multiplier"]) + " timesteps")
-        print("printing average reward over episodes in last : " + str(cfg["max_ep_len"] * cfg["print_freq_multiplier"]) + " timesteps")
+        print("log frequency : " + str(cfg["episode_length"] * cfg["log_freq_multiplier"]) + " timesteps")
+        print("printing average reward over episodes in last : " + str(cfg["episode_length"] * cfg["print_freq_multiplier"]) + " timesteps")
         print("--------------------------------------------------------------------------------------------")
         print("state space dimension : ", state_dim)
         print("action space dimension : ", action_dim)
@@ -43,7 +74,7 @@ def print_hyperparameters(cfg, state_dim, action_dim, run_num, log_f_name, verbo
         else:
             print("Initializing a discrete action space policy")
         print("--------------------------------------------------------------------------------------------")
-        print("PPO update frequency : " + str(cfg["max_ep_len"] * cfg["ppo_update_timestep_multiplier"]) + " timesteps")
+        print("PPO update frequency : " + str(cfg["episode_length"] * cfg["ppo_update_timestep_multiplier"]) + " timesteps")
         print("PPO K epochs : ", cfg["ppo_K_epochs"])
         print("PPO epsilon clip : ", cfg["ppo_eps_clip"])
         print("discount factor (gamma) : ", cfg["ppo_gamma"])

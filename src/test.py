@@ -1,5 +1,4 @@
 import os
-import time
 import json
 import argparse
 import gym
@@ -33,21 +32,21 @@ def test(cfg, args):
     ppo_agent = PPO(Actor, state_dim, action_dim, cfg["ppo_lr_actor"], cfg["ppo_lr_critic"] , cfg["ppo_gamma"], \
         cfg["ppo_K_epochs"], cfg["ppo_eps_clip"], cfg["has_continuous_action_space"], cfg["action_std"])
 
-    ckpt_base_path = os.path.join("PPO_preTrained", cfg["env_name"])
-    checkpoint_path = os.path.join(ckpt_base_path, "PPO_{}_{}_{}.pth".format(cfg["env_name"], cfg["ppo_random_seed"], args.pretrained_run))
-    print("loading network from : " + checkpoint_path)
+    ckpt_path = os.path.join(args.output_path, args.project_name, "ckpts", str(args.ckpt_number) + ".pth")
+    assert os.path.isfile(ckpt_path), f"this file does not exists: {ckpt_path}"
+    print("loading network from : " + ckpt_path)
 
-    ppo_agent.load(checkpoint_path)
+    ppo_agent.load(ckpt_path)
     test_running_reward = 0
     
-    for ep in range(1, args.test_episodes + 1):
+    for ep in range(args.test_episodes):
         ep_reward = 0
         state = {
             "env_state": env.reset()[0],
             "env_image": env.render() if args.process_image else None
         }
 
-        for t in range(1, cfg["max_ep_len"] + 1):
+        for t in range(cfg["episode_length"]):
             action = ppo_agent.select_action(state)
             new_state, reward, done, _ = env.step(action)[0:-1]
             ep_reward += reward
@@ -84,14 +83,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("cfg_path", type=str, help="json configuration file path containing environment and ppo config")
     parser.add_argument("--render", action="store_true", help="render the videogame or just run silently (default: no render)")
-    parser.add_argument("--pretrained-run", type=int, default=0, help="set this to load a particular checkpoint num")
+    parser.add_argument("--output-path", type=str, help="output directory")
+    parser.add_argument("--project-name", type=str, help="project name")    
+    parser.add_argument("--ckpt-number", type=int, help="checkpoint number")    
     parser.add_argument("--test-episodes", type=int, default=10, help="total num of testing episodes")
     parser.add_argument("--process-image", action="store_true", help="use also game image as state observation")
     args = parser.parse_args()
     
     assert args.cfg_path is not None and os.path.isfile(args.cfg_path), "cfg_path is not specified or is not a json file absolute path"
     assert args.test_episodes > 0, "Cannot set less than 1 episodes"
-    assert args.pretrained_run >= 0, "Cannot set less than 0 checkpoint number"
     
     cfg = read_cfg(args.cfg_path)
     

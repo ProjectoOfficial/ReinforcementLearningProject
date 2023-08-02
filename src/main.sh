@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo "$0 is not updated, we are sorry"
+exit 0
+
 print_usage(){
     echo "usate: $0 [options]"
     echo "Options:"
