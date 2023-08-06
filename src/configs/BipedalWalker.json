@@ -1,0 +1,30 @@
+{
+    "env_name": "BipedalWalker-v3",
+    "has_continuous_action_space": true,
+
+    "episode_length": 400,
+    "episodes": 10000,
+    "save_img_freq": 100,
+    "save_model_freq": 100,
+
+    "log_freq": 1,
+    "action_std": 0.6,
+    "action_std_decay_rate": 0.05,
+    "min_action_std": 0.1,
+    "action_std_decay_freq": 500,
+
+    "ppo_update": 1,
+    "ppo_K_epochs": 10,
+    "ppo_eps_clip": 0.2,
+    "ppo_gamma": 0.99,
+    "ppo_lr_actor": 0.0001,
+    "ppo_lr_critic": 0.003,
+    "ppo_random_seed": 130,
+    "ppo_c1": 0.5, 
+    "ppo_c2": 0.01,
+    "ppo_lamb": 0.95,
+
+    "network_activations": "tanh",
+    "network_last_activation": "tanh",
+    "network_hiddel_layers": [64, 256, 512, 1024, 2048, 4096]
+}

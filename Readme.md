@@ -29,7 +29,8 @@ To start working it is necessary to follow the following steps:
 
 ### Docker Instruction
 Docker OS: Ubuntu 20.04 \
-NVIDIA CUDA Version: 11.3 
+NVIDIA CUDA Version: 11.3 \
+Python version: 3.9
 
 1. Please follow docker base installation:
     ```
@@ -54,3 +55,59 @@ NVIDIA CUDA Version: 11.3
     ```
     ./docker/run.sh
     ```
+5. (Just in Case) docker permission error:
+    ```
+    sudo groupadd docker
+    sudo usermod -aG docker $USER
+    newgrp docker
+    reboot
+    ```
+
+### Introduction
+here we want to present you a possible implementation of the Reinforcement Learning algorithm called PPO (Proximal Policy Optimization), which tries to be as genuine as possible, without exploiting the _torchrl library_. The project was created for the Reinforcement Learning exam held at the University of Modena and Reggio Emilia. The project structure is as follows:
+```
+src
+├── actors
+│   └── actor_utils.py
+│   └── actor.py
+├── configs
+│   └── CartPole.json
+│   └── LunarLander.json
+│   └── ...
+├── utils
+│   └── utils.py
+├── customlogger.py
+├── main.sh
+├── ppo.py
+├── requirements.txt
+├── train.py
+└── test.py
+```
+
+Listed here you will be able to better understand each individual component:
+
+1. **actor_utils.py:** this file contains the functions necessary to build, starting from the configuration, the neural network that will carry out the predictions
+2. **actor.py:** here is contained the actor class, which integrates the neural network that predicts the policies and the neural network that criticizes these policies. the functions for carrying out the predictions and for updating and evaluating the predictions of the policy network are also implemented here
+3. **configs ... :** inside the configs folder are the configurations to make it all work. a configuration usually contains the name of the environment and the parameters of the environment itself (understood as a _gym_ environment). It also contains all the PPO configuration parameters and the configuration of the neural network layers.
+4. **utils.py :** all the boundary functions are contained here, useful for making prints, reading the configuration, setting the random seed, performing the sanity check, etc...
+5. **customlogger.py:** this logger is a class that saves logging data with a frequency set in the environment configuration file and this data is saved both in CSV format and in tensorboard.
+6. **ppo.py:**: here is the scratch implementation of PPO
+7. **train.py:** train script
+8. **test.py:** test script
+
+### Execution
+Train script:
+1. configuration absolute path (mandatory)
+2. experiments output path (mandatory)
+3. project name output folder (mandatory)
+```
+python /home/user/src/train.py /home/user/src/configs/CartPole.json /home/user/src/experiments CartPole --verbose
+```
+
+Test script:
+1. configuration absolute path (mandatory)
+2. experiments output path (mandatory)
+3. project name output folder (mandatory)
+```
+python /home/user/src/train.py /home/user/src/configs/CartPole.json /home/user/src/experiments CartPole --ckpt-number 499 --test-episodes 10 --verbose
+```

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from actors.actor import Actor
 
 class RolloutBuffer:
     def __init__(self):
@@ -11,6 +11,7 @@ class RolloutBuffer:
         self.state_values = []
         self.is_terminals = []
     
+    
     def clear(self):
         del self.actions[:]
         del self.states[:]
@@ -19,33 +20,42 @@ class RolloutBuffer:
         del self.state_values[:]
         del self.is_terminals[:]
 
-
+# from torchrl.objectives import ClipPPOLoss
 class PPO:
-    def __init__(self, actor_net, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6, c1=0.5, c2=0.01, device="cpu", process_image=False):
-        self.gamma = gamma
-        self.eps_clip = eps_clip
-        self.K_epochs = K_epochs
+    def __init__(self, 
+                 actor_net: Actor, 
+                 state_dim: int, 
+                 action_dim: int, 
+                 cfg: dict, 
+                 device: torch.device="cpu", 
+                 process_image: bool=False) -> None:
+        self.gamma = cfg["ppo_gamma"]
+        self.eps_clip = cfg["ppo_eps_clip"]
+        self.K_epochs = cfg["ppo_K_epochs"]
         self.device = device
-        self.action_std = action_std_init
-        self.has_continuous_action_space = has_continuous_action_space
+        self.action_std = cfg["action_std"]
+        self.has_continuous_action_space = cfg["has_continuous_action_space"]
 
         self.buffer = RolloutBuffer()
 
-        self.policy = actor_net(state_dim, action_dim, has_continuous_action_space, action_std_init, device, process_image).to(device)
+        self.policy = actor_net(cfg["network_hiddel_layers"], cfg["network_activations"], cfg["network_last_activation"], \
+            state_dim, action_dim, cfg["has_continuous_action_space"], cfg["action_std"], device, process_image).to(device)
         self.optimizer = torch.optim.Adam([
-                        {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+                        {'params': self.policy.actor.parameters(), 'lr': cfg["ppo_lr_actor"]},
+                        {'params': self.policy.critic.parameters(), 'lr': cfg["ppo_lr_critic"]}
                     ])
 
-        self.policy_old = actor_net(state_dim, action_dim, has_continuous_action_space, action_std_init, device, process_image).to(device)
+        self.policy_old = actor_net(cfg["network_hiddel_layers"], cfg["network_activations"], cfg["network_last_activation"], \
+            state_dim, action_dim, cfg["has_continuous_action_space"], cfg["action_std"], device, process_image).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
-        self.criterion = nn.SmoothL1Loss()
-        self.c1 = c1
-        self.c2 = c2
-        self.lamb = 0.9
+        self.criterion = nn.SmoothL1Loss(reduction="none")
+        self.c1 = cfg["ppo_c1"]
+        self.c2 = cfg["ppo_c2"]
+        self.lamb = cfg["ppo_lamb"]
 
-    def set_action_std(self, new_action_std):
+
+    def set_action_std(self, new_action_std: float):
         if self.has_continuous_action_space:
             self.action_std = new_action_std
             self.policy.set_action_std(new_action_std)
@@ -53,7 +63,8 @@ class PPO:
         else:
             raise ValueError("WARNING : Calling PPO::set_action_std() on discrete action space policy")
 
-    def decay_action_std(self, action_std_decay_rate, min_action_std):
+
+    def decay_action_std(self, action_std_decay_rate: int, min_action_std: float):
         if self.has_continuous_action_space:
             self.action_std = self.action_std - action_std_decay_rate
             self.action_std = round(self.action_std, 4)
@@ -67,10 +78,8 @@ class PPO:
         else:
             raise ValueError("WARNING : Calling PPO::decay_action_std() on discrete action space policy")
 
-    def select_action(self, state):
-        state["env_state"] = torch.FloatTensor(state["env_state"]).to(self.device)
-        state["env_image"] = torch.FloatTensor(state["env_image"].copy()).to(self.device) if state["env_image"] is not None else None
-                
+
+    def select_action(self, state: dict):                
         if self.has_continuous_action_space:
             with torch.no_grad():
                 env_state, action, action_logprob, state_val = self.policy_old.act(state)
@@ -112,8 +121,7 @@ class PPO:
     #            rewards.insert(0, discounted_reward)
     #            delta = reward + self.gamma * discounted_reward #missing - values, it's performed afterwards
     #            adv = delta
-
-
+    
     def update(self):
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(self.device)
@@ -132,10 +140,10 @@ class PPO:
 
         # Normalizing the rewards
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-6)
 
         # calculate advantages
-        advantages = rewards.detach() - old_state_values.detach()
+        advantages = rewards - old_state_values
 
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
@@ -161,12 +169,12 @@ class PPO:
             # instead of using directly gradient ascent
             l_clip = -torch.min(surr1, surr2)
             l_value_function = self.c1 * self.criterion(state_values, rewards)
-            l_entropy = - self.c2 * dist_entropy   
-            loss =  l_clip +  l_value_function  + l_entropy
+            l_entropy = - self.c2 * dist_entropy
+            loss =  (l_clip + l_value_function + l_entropy).mean()
             
             # take gradient step
             self.optimizer.zero_grad()
-            loss.mean().backward()
+            loss.backward()
             self.optimizer.step()
             
         # Copy new weights into old policy
@@ -176,13 +184,14 @@ class PPO:
         self.buffer.clear()
         
         clamped = ((ratios * advantages) == surr2).all().to(torch.int8)
-        return loss.mean().detach(), l_clip.mean().detach(), l_value_function.detach(), l_entropy.mean().detach(), state_values.mean().detach(), clamped.detach()
+        return loss.mean().detach(), l_clip.mean().detach(), l_value_function.mean().detach(), l_entropy.mean().detach(), state_values.mean().detach(), clamped.detach()
     
     
-    def save(self, checkpoint_path):
+    def save(self, checkpoint_path: str):
         torch.save(self.policy_old.state_dict(), checkpoint_path)
    
-    def load(self, checkpoint_path):
+   
+    def load(self, checkpoint_path: str):
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
