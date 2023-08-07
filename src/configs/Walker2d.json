@@ -23,6 +23,7 @@
     "ppo_c1": 0.5, 
     "ppo_c2": 0.001,
     "ppo_lamb": 0.95,
+    "ppo_mode" : "gae",
 
     "network_activations": "hardtanh",
     "network_last_activation": "hardtanh",
