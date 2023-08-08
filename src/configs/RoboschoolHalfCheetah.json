@@ -17,5 +17,6 @@
     "ppo_gamma": 0.99,
     "ppo_lr_actor": 0.0003,
     "ppo_lr_critic": 0.001,
-    "ppo_random_seed": 0
+    "ppo_random_seed": 0,
+    "ppo_mode" : "gae"
 }
