@@ -125,6 +125,7 @@ class PPO:
     #            adv = delta
     
     def update(self):
+        #compute advantages, returns and perform training
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(self.device)
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(self.device)
